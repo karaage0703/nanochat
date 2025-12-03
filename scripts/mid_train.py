@@ -98,6 +98,11 @@ base_dir = get_base_dir()
 
 # Check if Japanese language mode is enabled
 _use_japanese = os.environ.get("NANOCHAT_LANG", "").lower() == "ja"
+# Check for extra custom data (e.g., personal blog data for style learning)
+_extra_data_path = os.environ.get("NANOCHAT_EXTRA_DATA", "")
+# Check if identity conversations should be skipped (for custom style training)
+_skip_identity = os.environ.get("NANOCHAT_SKIP_IDENTITY", "").lower() in ("1", "true", "yes")
+
 # Use Japanese identity file for Japanese mode
 if _use_japanese:
     identity_conversations_filepath = os.path.join(base_dir, "identity_conversations_ja.jsonl")
@@ -105,22 +110,35 @@ else:
     identity_conversations_filepath = os.path.join(base_dir, "identity_conversations.jsonl")
 
 if _use_japanese:
-    train_dataset = TaskMixture([
+    _tasks = [
         JapaneseInstruct(split="train", stop=400_000), # 400K rows of Japanese instructions
         GSM8K(subset="main", split="train"), # 8K rows teaching simple math (language-agnostic)
-        CustomJSON(filepath=identity_conversations_filepath), # 1000 rows of synthetic identity conversations
-        CustomJSON(filepath=identity_conversations_filepath), # let's do 2 epochs of these
-    ]) # total: 400K + 8K + 2K = 410K rows
+    ]
+    if not _skip_identity:
+        _tasks.append(CustomJSON(filepath=identity_conversations_filepath)) # 1000 rows of synthetic identity conversations
+        _tasks.append(CustomJSON(filepath=identity_conversations_filepath)) # let's do 2 epochs of these
 else:
-    train_dataset = TaskMixture([
+    _tasks = [
         SmolTalk(split="train"), # 460K rows of general conversations
         MMLU(subset="auxiliary_train", split="train"), # 100K rows of multiple choice problems drawn from ARC, MC_TEST, OBQA, RACE
         GSM8K(subset="main", split="train"), # 8K rows teaching simple math and (calculator) tool use
-        CustomJSON(filepath=identity_conversations_filepath), # 1000 rows of synthetic identity conversations
-        CustomJSON(filepath=identity_conversations_filepath), # let's do 2 epochs of these
         SimpleSpelling(size=200000, split="train"), # 200K rows of Simple Spelling (e.g. spell the word 'apple')
         SpellingBee(size=80000, split="train"), # 80K rows of Spelling Bee (e.g. how many 'r' are in 'strawberry'?)
-    ]) # total: 460K + 100K + 8K + 200K + 80K = 848K rows
+    ]
+    if not _skip_identity:
+        _tasks.append(CustomJSON(filepath=identity_conversations_filepath)) # 1000 rows of synthetic identity conversations
+        _tasks.append(CustomJSON(filepath=identity_conversations_filepath)) # let's do 2 epochs of these
+
+# Add extra custom data if specified via NANOCHAT_EXTRA_DATA environment variable
+if _extra_data_path and os.path.exists(_extra_data_path):
+    print0(f"Adding extra custom data from: {_extra_data_path}")
+    _tasks.insert(0, CustomJSON(filepath=_extra_data_path))  # Add at beginning for emphasis
+    _tasks.insert(1, CustomJSON(filepath=_extra_data_path))  # 2 epochs for better learning
+
+if _skip_identity:
+    print0("Skipping identity conversations (NANOCHAT_SKIP_IDENTITY=1)")
+
+train_dataset = TaskMixture(_tasks)
 val_dataset = TaskMixture([
     SmolTalk(split="test"), # 24K rows in test set
     MMLU(subset="all", split="test", stop=5200), # 14K rows in test set, use only 5.2K to match the train ratios
