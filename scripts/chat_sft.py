@@ -81,16 +81,31 @@ engine = Engine(model, tokenizer) # will be used for inline model evaluation onl
 
 # -----------------------------------------------------------------------------
 # Task data mixture we'll train on
-identity_conversations_filepath = os.path.join(get_base_dir(), "identity_conversations.jsonl")
-train_ds = TaskMixture([
-    ARC(subset="ARC-Easy", split="train"), # 2.3K rows
-    ARC(subset="ARC-Challenge", split="train"), # 1.1K rows
-    GSM8K(subset="main", split="train"), # 8K rows
-    SmolTalk(split="train", stop=10_000), # 10K rows of smoltalk
-    CustomJSON(filepath=identity_conversations_filepath), # 1K rows of synthetic identity conversations
-    SimpleSpelling(size=300, split="train"), # 300 rows of Simple Spelling (e.g. spell the word 'apple')
-    SpellingBee(size=300, split="train"), # 300 rows of Spelling Bee (e.g. how many 'r' are in 'strawberry'?)
-]) # 2.3K + 1.1K + 8K + 10K + 1K + 0.3K + 0.3K = 23K rows
+# Check if Japanese language mode is enabled
+import os as _os
+_use_japanese = _os.environ.get("NANOCHAT_LANG", "").lower() == "ja"
+# Use Japanese identity file for Japanese mode
+if _use_japanese:
+    identity_conversations_filepath = os.path.join(get_base_dir(), "identity_conversations_ja.jsonl")
+else:
+    identity_conversations_filepath = os.path.join(get_base_dir(), "identity_conversations.jsonl")
+
+if _use_japanese:
+    train_ds = TaskMixture([
+        JapaneseInstruct(split="train", stop=20_000), # 20K rows of Japanese instructions
+        GSM8K(subset="main", split="train"), # 8K rows (math is language-agnostic)
+        CustomJSON(filepath=identity_conversations_filepath), # 1K rows of synthetic identity conversations
+    ]) # 20K + 8K + 1K = 29K rows
+else:
+    train_ds = TaskMixture([
+        ARC(subset="ARC-Easy", split="train"), # 2.3K rows
+        ARC(subset="ARC-Challenge", split="train"), # 1.1K rows
+        GSM8K(subset="main", split="train"), # 8K rows
+        SmolTalk(split="train", stop=10_000), # 10K rows of smoltalk
+        CustomJSON(filepath=identity_conversations_filepath), # 1K rows of synthetic identity conversations
+        SimpleSpelling(size=300, split="train"), # 300 rows of Simple Spelling (e.g. spell the word 'apple')
+        SpellingBee(size=300, split="train"), # 300 rows of Spelling Bee (e.g. how many 'r' are in 'strawberry'?)
+    ]) # 2.3K + 1.1K + 8K + 10K + 1K + 0.3K + 0.3K = 23K rows
 val_ds = SmolTalk(split="test") # general conversations, 24K rows (though we don't actually use all of it)
 
 # -----------------------------------------------------------------------------

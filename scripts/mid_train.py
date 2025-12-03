@@ -29,6 +29,7 @@ from tasks.mmlu import MMLU
 from tasks.smoltalk import SmolTalk
 from tasks.customjson import CustomJSON
 from tasks.spellingbee import SimpleSpelling, SpellingBee
+from tasks.japanese_instruct import JapaneseInstruct
 
 # -----------------------------------------------------------------------------
 run = "dummy" # wandb run name default ("dummy" is special - we won't log to wandb)
@@ -94,16 +95,32 @@ for opt in optimizers:
 
 # Midtraining data mixture and DataLoader
 base_dir = get_base_dir()
-identity_conversations_filepath = os.path.join(base_dir, "identity_conversations.jsonl")
-train_dataset = TaskMixture([
-    SmolTalk(split="train"), # 460K rows of general conversations
-    MMLU(subset="auxiliary_train", split="train"), # 100K rows of multiple choice problems drawn from ARC, MC_TEST, OBQA, RACE
-    GSM8K(subset="main", split="train"), # 8K rows teaching simple math and (calculator) tool use
-    CustomJSON(filepath=identity_conversations_filepath), # 1000 rows of synthetic identity conversations
-    CustomJSON(filepath=identity_conversations_filepath), # let's do 2 epochs of these
-    SimpleSpelling(size=200000, split="train"), # 200K rows of Simple Spelling (e.g. spell the word 'apple')
-    SpellingBee(size=80000, split="train"), # 80K rows of Spelling Bee (e.g. how many 'r' are in 'strawberry'?)
-]) # total: 460K + 100K + 8K + 200K + 80K = 848K rows
+
+# Check if Japanese language mode is enabled
+_use_japanese = os.environ.get("NANOCHAT_LANG", "").lower() == "ja"
+# Use Japanese identity file for Japanese mode
+if _use_japanese:
+    identity_conversations_filepath = os.path.join(base_dir, "identity_conversations_ja.jsonl")
+else:
+    identity_conversations_filepath = os.path.join(base_dir, "identity_conversations.jsonl")
+
+if _use_japanese:
+    train_dataset = TaskMixture([
+        JapaneseInstruct(split="train", stop=400_000), # 400K rows of Japanese instructions
+        GSM8K(subset="main", split="train"), # 8K rows teaching simple math (language-agnostic)
+        CustomJSON(filepath=identity_conversations_filepath), # 1000 rows of synthetic identity conversations
+        CustomJSON(filepath=identity_conversations_filepath), # let's do 2 epochs of these
+    ]) # total: 400K + 8K + 2K = 410K rows
+else:
+    train_dataset = TaskMixture([
+        SmolTalk(split="train"), # 460K rows of general conversations
+        MMLU(subset="auxiliary_train", split="train"), # 100K rows of multiple choice problems drawn from ARC, MC_TEST, OBQA, RACE
+        GSM8K(subset="main", split="train"), # 8K rows teaching simple math and (calculator) tool use
+        CustomJSON(filepath=identity_conversations_filepath), # 1000 rows of synthetic identity conversations
+        CustomJSON(filepath=identity_conversations_filepath), # let's do 2 epochs of these
+        SimpleSpelling(size=200000, split="train"), # 200K rows of Simple Spelling (e.g. spell the word 'apple')
+        SpellingBee(size=80000, split="train"), # 80K rows of Spelling Bee (e.g. how many 'r' are in 'strawberry'?)
+    ]) # total: 460K + 100K + 8K + 200K + 80K = 848K rows
 val_dataset = TaskMixture([
     SmolTalk(split="test"), # 24K rows in test set
     MMLU(subset="all", split="test", stop=5200), # 14K rows in test set, use only 5.2K to match the train ratios

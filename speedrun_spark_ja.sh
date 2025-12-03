@@ -34,6 +34,9 @@ PY
 echo "== 1) 日本語データ準備 =="
 python -m nanochat.dataset -n "${DATA_SHARDS}" --lang ja
 
+echo "== 1.5) 日本語identityファイルをコピー =="
+cp data/identity_conversations_ja.jsonl "${CACHE_DIR}/identity_conversations_ja.jsonl"
+
 echo "== 2) 日本語トークナイザ学習 =="
 python -m scripts.tok_train --max_chars=500000000
 python -m scripts.tok_eval || true
